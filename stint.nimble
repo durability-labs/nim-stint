@@ -1,7 +1,7 @@
 mode = ScriptMode.Verbose
 
 packageName   = "stint"
-version       = "0.9.0"
+version       = "0.8.3"
 author        = "Status Research & Development GmbH"
 description   = "Efficient stack-based multiprecision int in Nim"
 license       = "Apache License 2.0 or MIT"
@@ -9,9 +9,8 @@ skipDirs      = @["tests", "benchmarks"]
 ### Dependencies
 
 # TODO test only requirements don't work: https://github.com/nim-lang/nimble/issues/482
-requires "nim >= 2.0.16",
+requires "nim >= 1.6.12",
          "stew >= 0.2.0",
-         "intops >= 1.0.8",
          "unittest2 >= 0.2.3"
 
 let nimc = getEnv("NIMC", "nim") # Which nim compiler to use
@@ -19,20 +18,22 @@ let lang = getEnv("NIMLANG", "c") # Which backend (c/cpp/js)
 let flags = getEnv("NIMFLAGS", "") # Extra flags for the compiler
 let verbose = getEnv("V", "") notin ["", "0"]
 
-from std/os import quoteShell
+from os import quoteShell
 
 let cfg =
   " --styleCheck:usages --styleCheck:error" &
-  (if verbose: "" else: " --verbosity:0") &
+  (if verbose: "" else: " --verbosity:0 --hints:off") &
   " --skipParentCfg --skipUserCfg --outdir:build " &
   quoteShell("--nimcache:build/nimcache/$projectName")
+
 
 proc build(args, path: string) =
   exec nimc & " " & lang & " " & cfg & " " & flags & " " & args & " " & path
 
 proc run(args, path: string) =
-  build args & " --mm:orc -r", path
-  build args & " --mm:refc -r", path
+  build args & " -r", path
+  if (NimMajor, NimMinor) > (1, 6):
+    build args & " --mm:refc -r", path
 
 proc test(path: string) =
   for config in ["", "-d:stintNoIntrinsics"]:
@@ -54,13 +55,3 @@ task test, "Run all tests":
   if lang == "c":
     build "--cpu:amd64 -c -d:unittest2Static", "tests/all_tests"
     build "--cpu:wasm32 -c -d:unittest2Static", "tests/all_tests"
-
-task book, "Generate book":
-  exec "mdbook build book -d docs"
-
-task apidocs, "Generate API docs":
-  exec "nimble doc --outdir:docs/apidocs --project --index:on --git.url:https://github.com/status-im/nim-stint stint.nim"
-
-task docs, "Generate docs":
-  exec "nimble book"
-  exec "nimble apidocs"

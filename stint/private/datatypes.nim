@@ -9,7 +9,8 @@
 
 import
   # Status lib
-  stew/bitops2
+  stew/[bitops2, staticfor],
+  std/macros
 
 when sizeof(int) == 8 and not defined(Stint32):
   type
@@ -24,26 +25,25 @@ const WordBitWidth* = sizeof(Word) * 8
 
 func wordsRequired*(bits: int): int {.compileTime.} =
   ## Compute the number of limbs required
-  ## for the **announced** bit length
+  ## for the **announced** bit length.
   (bits + WordBitWidth - 1) div WordBitWidth
 
 type
   Limbs*[N: static int] = array[N, Word]
-    ## Limbs type
+    ## Limbs type.
 
   StUint*[bits: static[int]] = object
-    ## Stack-based integer
-    ## Unsigned
+    ## Stack-based integer.
+    ##
+    ## Unsigned.
     limbs*: array[bits.wordsRequired, Word]
       # Limbs-Endianess is little-endian
 
   StInt*[bits: static[int]] = object
-    ## Stack-based integer
+    ## Stack-based integer.
+    ##
     ## Signed, in two complement format
     impl*: StUint[bits]
-
-  Carry* = uint8  # distinct range[0'u8 .. 1]
-  Borrow* = uint8 # distinct range[0'u8 .. 1]
 
   SomeBigInteger*[bits: static[int]] = StUint[bits] | StInt[bits]
 
@@ -85,18 +85,20 @@ template len*(a: StUint): int =
 {.push raises: [], inline, noinit, gcsafe.}
 
 template clearExtraBitsOverMSB*(a: var StUint | StInt) =
-  ## A Stuint is stored in an array of 32 of 64-bit word
+  ## A StUint is stored in an array of 32 of 64-bit word.
+  ##
   ## If we do bit manipulation at the word level,
-  ## for example a 8-bit stuint stored in a 64-bit word
-  ## we need to clear the upper 56-bit
+  ## for example a 8-bit StUint stored in a 64-bit word,
+  ## we need to clear the upper 56-bit.
   when a.bits != a.limbs.len * WordBitWidth:
     const posExtraBits = a.bits - (a.limbs.len-1) * WordBitWidth
     const mask = (Word(1) shl posExtraBits) - 1
     a[^1] = a[^1] and mask
 
 func usedBitsAndWords*(a: openArray[Word]): tuple[bits, words: int] =
-  ## Returns the number of used words and bits in a bigInt
-  ## Returns (0, 0) for all-zeros array (even if technically you need 1 bit and 1 word to encode zero)
+  ## Returns the number of used words and bits in a bigInt.
+  ##
+  ## Returns (0, 0) for all-zeros array (even if technically you need 1 bit and 1 word to encode zero).
   var clz = 0
   # Count Leading Zeros
   for i in countdown(a.len-1, 0):
@@ -113,8 +115,6 @@ func usedBitsAndWords*(a: openArray[Word]): tuple[bits, words: int] =
 
 # Iterations
 # --------------------------------------------------------
-
-import std/macros
 
 proc replaceNodes(ast: NimNode, what: NimNode, by: NimNode): NimNode =
   # Replace "what" ident node by "by"
@@ -136,13 +136,42 @@ proc replaceNodes(ast: NimNode, what: NimNode, by: NimNode): NimNode =
   result = inspect(ast)
 
 macro staticFor*(idx: untyped{nkIdent}, start, stopEx: static int, body: untyped): untyped {.deprecated: "stew/staticfor".} =
-  ## staticFor [min inclusive, max exclusive)
+  ## staticFor [min inclusive, max exclusive).
   result = newStmtList()
   for i in start ..< stopEx:
     result.add nnkBlockStmt.newTree(
       ident("unrolledIter_" & $idx & $i),
       body.replaceNodes(idx, newLit i)
     )
+
+const
+  staticForMaxBitSize = 4096
+  staticForMaxIterCount = staticForMaxBitSize div WordBitWidth
+
+macro smartFor*(idx: untyped, slice: untyped, body: untyped): untyped =
+  result = newStmtList()
+  
+  let 
+    staticForSym = bindSym("staticFor")
+    maxIterCountSym = bindSym("staticForMaxIterCount")
+  
+  result.add quote do:
+    when compiles(static(`slice`)):
+      const s = `slice`
+      when len(s) <= `maxIterCountSym`:
+        `staticForSym`(`idx`, s):
+          `body`
+      else:
+        for i in s.a .. s.b:
+          block:
+            let `idx` {.inject.} = i
+            `body`
+    else:
+      let s = `slice`
+      for i in s.a .. s.b:
+        block:
+          let `idx` {.inject.} = i
+          `body`
 
 # Copy
 # --------------------------------------------------------
@@ -153,8 +182,8 @@ func copyWords*(
        b: openArray[Word], startB: int,
        numWords: int) =
   ## Copy a slice of B into A. This properly deals
-  ## with overlaps when A and B are slices of the same buffer
-  for i in countdown(numWords-1, 0):
-    a[startA+i] = b[startB+i]
+  ## with overlaps when A and B are slices of the same buffer.
+  for i in countdown(numWords - 1, 0):
+    a[startA + i] = b[startB + i]
 
 {.pop.}

@@ -12,8 +12,9 @@ import ./uintops, private/datatypes
 {.push raises: [], gcsafe.}
 
 func addmod_internal(a, b, m: StUint): StUint {.inline.}=
-  ## Modular addition
-  ## ⚠⚠ Assume a < m and b < m
+  ## Modular addition.
+  ##
+  ## ⚠⚠ Assume a < m and b < m.
 
   doAssert a < m
   doAssert b < m
@@ -27,8 +28,9 @@ func addmod_internal(a, b, m: StUint): StUint {.inline.}=
     m - b_from_m + a
 
 func submod_internal(a, b, m: StUint): StUint {.inline.}=
-  ## Modular substraction
-  ## ⚠⚠ Assume a < m and b < m
+  ## Modular substraction.
+  ##
+  ## ⚠⚠ Assume a < m and b < m.
 
   doAssert a < m
   doAssert b < m
@@ -39,28 +41,38 @@ func submod_internal(a, b, m: StUint): StUint {.inline.}=
   else:
     m - b + a
 
+template reduce(x, m: StUint): StUint =
+  # `x` and `m` multiply evaluated; bind expressions to a `let`.
+  if x < m: x else: x mod m
+
 func addmod*(a, b, m: StUint): StUint =
-  ## Modular addition
+  ## Modular addition.
 
-  let a_m = if a < m: a
-            else: a mod m
-  let b_m = if b < m: b
-            else: b mod m
-
-  addmod_internal(a_m, b_m, m)
+  let s = a + b
+  if s >= a:
+    reduce(s, m)
+  else:
+    if s < m:
+      let d = s - m
+      reduce(d, m)
+    else:
+      let t = zero(typeof m) - m
+      addmod_internal(s mod m, reduce(t, m), m)
 
 func submod*(a, b, m: StUint): StUint =
-  ## Modular substraction
+  ## Modular substraction.
 
-  let a_m = if a < m: a
-            else: a mod m
-  let b_m = if b < m: b
-            else: b mod m
-
-  submod_internal(a_m, b_m, m)
+  if a >= b:
+    let d = a - b
+    reduce(d, m)
+  else:
+    let u = b - a
+    let r = reduce(u, m)
+    if r.isZero: r
+    else: m - r
 
 func mulmod*(a, b, m: StUint): StUint =
-  ## Modular multiplication
+  ## Modular multiplication.
 
   let
     ax = a.stuint(a.bits * 2)
@@ -71,7 +83,7 @@ func mulmod*(a, b, m: StUint): StUint =
   divmod(px, mx).rem.stuint(a.bits)
 
 func powmod*(a, b, m: StUint): StUint =
-  ## Modular exponentiation
+  ## Modular exponentiation.
 
   var (a, b) = (a, b)
   result = one(type a)
